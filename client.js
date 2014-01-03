@@ -6,7 +6,10 @@ function() {
 		if (self.collections[name]) {
 			return self.collections[name];
 		} else {
-			self.collections[name] = new Meteor.Collection(name);
+			if (name === "users")
+				self.collections[name] = Meteor.users;
+			else
+				self.collections[name] = new Meteor.Collection(name);
 			return self.collections[name];
 		}
 	}
