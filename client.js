@@ -46,62 +46,82 @@ function($rootScope, MeteorCollections, $meteorObject) {
 		}
 	}, 100);
 	function CollectionFactory(collection) {
-		var collection = MeteorCollections.getCollection(collection);
-		var value = [];
+		var collection = MeteorCollections.getCollection(collection),
+            values = [],
+            value = {},
+            handle;
 
 		function Collection(value) {
 			value = {};
 		}
 
+        function getDeletedKeys(obj){
+            var keys = {};
+            _.each(obj, function(value, key){
+                if (value === undefined)
+                    keys[key] = 1;
+            });
+            return _.isEmpty(keys)?undefined:keys;
+        }
 
 		Collection.observe = function(cursor, array) {
-			cursor.observe({
-				"addedAt" : function(document, atIndex, before) {
-					//console.log(document);
+            if (handle) {
+                handle.stop();
+                handle = undefined;
+            }
 
+			handle = cursor.observe({
+				"addedAt" : function(document, atIndex, before) {
 					if (!array) {
-						value = new $meteorObject(collection, document);
+                        angular.extend(value, document);
 					}
 					if (array) {
-						value[atIndex] = new $meteorObject(collection, document);
+						values[atIndex] = new $meteorObject(collection, document);
 					}
 					$rootScope.apply();
 				},
 				"changedAt" : function(newDocument, oldDocument, atIndex) {
-
-					value[atIndex] = new $meteorObject(collection, newDocument);
+                    if (!array) {
+                        angular.extend(value, newDocument);
+                    } else {
+				        values[atIndex] = new $meteorObject(collection, newDocument);
+                    }
 					$rootScope.apply();
 				},
 				"removedAt" : function(oldDocument, atIndex) {
-
-					value.splice(atIndex, 1);
+					values.splice(atIndex, 1);
 					$rootScope.apply();
 				}
-			})
+			});
 		}
 		Collection.find = function(selector, options, callback) {
-			value = this instanceof Collection ? this : [];
+            value = undefined;
 			this.observe(collection.find(selector, options), true);
-			return value;
+			return values;
 		}
 		Collection.findOne = function(selector, options, callback) {
-			value = this instanceof Collection ? this : {};
-			value = new $meteorObject(collection,collection.find(selector,options).fetch()[0]);
+			value = new $meteorObject(collection, collection.find(selector,options).fetch()[0]);
 			this.observe(collection.find(selector, options), false);
 			return value;
 		}
 		Collection.insert = function(values) {
 			values = angular.copy(values);
-            		cleanupAngularObject(values);
+            cleanupAngularObject(values);
 			return collection.insert(values);
 		}
 		Collection.update = function(selector, updateValues) {
 			updateValues = angular.copy(updateValues);
-            		cleanupAngularObject(updateValues);
-            		delete updateValues._id;
-			return collection.update(selector, {
+            cleanupAngularObject(updateValues);
+            delete updateValues._id;
+
+            var modifier = {
 				$set : updateValues
-			});
+			};
+            var deletedKeys = getDeletedKeys(updateValues);
+
+            if (deletedKeys)
+                modifier['$unset'] = deletedKeys;
+			return collection.update(selector, modifier);
 		}
 		Collection.remove = function(selector) {
 			return collection.remove(selector);
@@ -110,7 +130,7 @@ function($rootScope, MeteorCollections, $meteorObject) {
 	}
 
 	return CollectionFactory;
-}]); 
+}]);
 
 /** Removes AngularJS transient properties from Object tree */
 cleanupAngularObject = function(value) {
